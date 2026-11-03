@@ -12,11 +12,21 @@ body {
   flex-direction: column;
 }
 
-/* Top bar */
+/* Make sure anything marked "hidden" really stays hidden */
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Top bar ---- */
+
 header {
   background: #1f2937;
   color: #ffffff;
-  padding: 12px 16px;
+  padding: 10px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
 }
 
 header h1 {
@@ -24,9 +34,113 @@ header h1 {
   font-size: 1.2rem;
 }
 
-/* The map takes up all remaining space */
+/* Search box takes up the rest of the bar */
+.search {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.search input {
+  flex: 1;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+/* ---- Buttons ---- */
+
+button {
+  padding: 7px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+button.primary,
+.search button {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+/* ---- The map takes up all remaining space ---- */
+
 #map {
   flex: 1;
+}
+
+/* ---- Add/edit form panel (floats over the map) ---- */
+
+#form-panel {
+  position: fixed;
+  top: 70px;
+  right: 16px;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 90px);
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  padding: 16px;
+  box-sizing: border-box;
+  z-index: 1100; /* sits above the map */
+}
+
+#form-panel h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+#spot-form label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+#spot-form input,
+#spot-form textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.coords {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* On phones, the form slides up from the bottom instead */
+@media (max-width: 600px) {
+  #form-panel {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    max-height: 70%;
+    border-radius: 12px 12px 0 0;
+  }
 }
 
 /* ---- Popup styling (what you see when you tap a pin) ---- */
@@ -45,4 +159,15 @@ header h1 {
 .popup .label {
   font-weight: 600;
   color: #4b5563;
+}
+
+.popup-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.popup-actions .delete-btn {
+  color: #b91c1c;
+  border-color: #fca5a5;
 }

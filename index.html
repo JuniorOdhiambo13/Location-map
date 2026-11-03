@@ -14,13 +14,44 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Top bar with the app name -->
+  <!-- Top bar: app name + address search -->
   <header>
     <h1>Location Map</h1>
+    <form id="search-form" class="search">
+      <input id="search-input" type="search" placeholder="Search an address or place" aria-label="Search an address or place">
+      <button type="submit">Search</button>
+    </form>
   </header>
 
   <!-- Empty box where Leaflet will draw the map -->
   <div id="map"></div>
+
+  <!-- The form for adding or editing a spot. "hidden" = not shown until needed -->
+  <aside id="form-panel" hidden>
+    <h2 id="form-title">New spot</h2>
+    <form id="spot-form">
+      <label>Name
+        <input id="field-name" required placeholder="e.g. Rooftop parking deck">
+      </label>
+      <label>Address
+        <input id="field-address">
+      </label>
+      <label>Parking
+        <input id="field-parking" placeholder="Where to park, cost">
+      </label>
+      <label>Hours
+        <input id="field-hours" placeholder="e.g. 6 AM – 11 PM">
+      </label>
+      <label>Notes
+        <textarea id="field-notes" rows="3" placeholder="Best light, permits, crowds…"></textarea>
+      </label>
+      <p id="form-coords" class="coords"></p>
+      <div class="form-actions">
+        <button type="submit" class="primary">Save</button>
+        <button type="button" id="cancel-btn">Cancel</button>
+      </div>
+    </form>
+  </aside>
 
   <!-- Leaflet's code (the map library itself) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
