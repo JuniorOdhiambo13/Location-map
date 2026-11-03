@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Basic page settings -->
+  <meta charset="UTF-8">
+  <!-- Makes the page fit phone screens properly -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location Map</title>
+
+  <!-- Leaflet's styles (how the map, pins and popups look) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <!-- Your own styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Top bar with the app name -->
+  <header>
+    <h1>Location Map</h1>
+  </header>
+
+  <!-- Empty box where Leaflet will draw the map -->
+  <div id="map"></div>
+
+  <!-- Leaflet's code (the map library itself) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Your own code — loads last so Leaflet is ready first -->
+  <script src="app.js"></script>
+</body>
+</html>
