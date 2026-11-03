@@ -74,9 +74,9 @@ button.primary,
   flex: 1;
 }
 
-/* ---- Add/edit form panel (floats over the map) ---- */
+/* ---- Form panels: add/edit and sign in (float over the map) ---- */
 
-#form-panel {
+.panel {
   position: fixed;
   top: 70px;
   right: 16px;
@@ -92,12 +92,12 @@ button.primary,
   z-index: 1100; /* sits above the map */
 }
 
-#form-panel h2 {
+.panel h2 {
   margin: 0 0 12px;
   font-size: 1.1rem;
 }
 
-#spot-form label {
+.panel label {
   display: block;
   margin-bottom: 10px;
   font-size: 0.85rem;
@@ -105,8 +105,8 @@ button.primary,
   color: #374151;
 }
 
-#spot-form input,
-#spot-form textarea {
+.panel input,
+.panel textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -129,9 +129,23 @@ button.primary,
   gap: 8px;
 }
 
+/* Red message when sign-in fails */
+.error {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: #b91c1c;
+}
+
+/* Sign in / Sign out button in the top bar */
+.header-btn {
+  background: transparent;
+  border-color: #6b7280;
+  color: #ffffff;
+}
+
 /* On phones, the form slides up from the bottom instead */
 @media (max-width: 600px) {
-  #form-panel {
+  .panel {
     top: auto;
     bottom: 0;
     right: 0;

@@ -1,78 +1,46 @@
 // ============================================================
-// Location Map — Phase 2
-// Add spots by clicking the map or searching an address.
-// Edit or delete them from each pin's popup.
-// Spots are saved in this browser (localStorage) until Phase 3.
+// Location Map — Phase 4
+// Spots are saved in your Supabase database, so every device sees them.
+// Anyone can view the map; only signed-in users can add, edit or delete.
 // ============================================================
 
 
 // ------------------------------------------------------------
-// 1. SAVED DATA
+// 1. CONNECT TO SUPABASE
 // ------------------------------------------------------------
 
-// The name your spots are saved under in the browser
-const STORAGE_KEY = "location-map-spots";
+// Your project's address and public key. These are meant to be public;
+// the security rules (RLS) you set up in Supabase decide what's allowed.
+// Never put a "secret" or "service_role" key here.
+const SUPABASE_URL = "https://agcaxcbelhfltsarolft.supabase.co";
+const SUPABASE_KEY = "sb_publishable_OnTYkRGNdNVdaSIsRc54XQ_DptoDF9O";
 
-// Shown the very first time, before you've saved anything.
-// Each spot has an "id" so we can find it later to edit or delete it.
-const sampleSpots = [
-  {
-    id: "sample-1",
-    name: "Jackson Street Bridge",
-    lat: 33.7590,
-    lng: -84.3720,
-    address: "Jackson St NE, Atlanta, GA",
-    parking: "Sample: street parking nearby",
-    hours: "Sample: check before you go",
-    notes: "Sample: skyline view; replace with your own notes"
-  },
-  {
-    id: "sample-2",
-    name: "Piedmont Park",
-    lat: 33.7851,
-    lng: -84.3738,
-    address: "Piedmont Park, Atlanta, GA",
-    parking: "Sample: paid parking deck",
-    hours: "Sample: check the park's website",
-    notes: "Sample: lake and skyline shots"
-  },
-  {
-    id: "sample-3",
-    name: "Krog Street Tunnel",
-    lat: 33.7535,
-    lng: -84.3637,
-    address: "Krog St NE, Atlanta, GA",
-    parking: "Sample: street parking",
-    hours: "Sample: open area",
-    notes: "Sample: graffiti walls; watch for cars"
-  }
-];
+// "db" is our connection to the database
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Load saved spots from the browser, or use the samples if there are none.
-// try/catch = "try this, and if it errors, do this instead" so the app never crashes.
-function loadSpots() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved); // turn saved text back into a list
-    }
-  } catch (error) {
-    console.warn("Could not load saved spots:", error);
+// The list of spots currently shown on the map
+let spots = [];
+
+// Who is signed in right now (null = a visitor who can only look)
+let currentUser = null;
+
+// Get every spot from the database.
+// "async/await" means: wait for the internet to answer before continuing.
+async function loadSpots() {
+  const { data, error } = await db
+    .from("spots")            // the table you made
+    .select("*")              // all columns
+    .order("created_at");     // oldest first
+
+  if (error) {
+    console.error(error);
+    alert("Couldn't load your spots. Check your internet and refresh.");
+    return;
   }
-  return sampleSpots;
+
+  spots = data;
+  renderSpots();
 }
-
-// Save the current list of spots into the browser
-function saveSpots() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots)); // list -> text
-  } catch (error) {
-    alert("Couldn't save in this browser. Your changes will be lost when you close the page.");
-  }
-}
-
-// "let" instead of "const" because this list will change
-let spots = loadSpots();
 
 
 // ------------------------------------------------------------
@@ -112,11 +80,18 @@ function buildPopup(spot) {
     <p><span class="label">Parking:</span> ${escapeHtml(spot.parking) || "—"}</p>
     <p><span class="label">Hours:</span> ${escapeHtml(spot.hours) || "—"}</p>
     <p><span class="label">Notes:</span> ${escapeHtml(spot.notes) || "—"}</p>
-    <div class="popup-actions">
-      <button type="button" class="edit-btn">Edit</button>
-      <button type="button" class="delete-btn">Delete</button>
-    </div>
   `;
+
+  // Visitors only see the details. Edit/Delete appear only when you're signed in.
+  if (!currentUser) return box;
+
+  const actions = document.createElement("div");
+  actions.className = "popup-actions";
+  actions.innerHTML = `
+    <button type="button" class="edit-btn">Edit</button>
+    <button type="button" class="delete-btn">Delete</button>
+  `;
+  box.appendChild(actions);
 
   // Edit: close the popup and open the form filled with this spot's details
   box.querySelector(".edit-btn").addEventListener("click", function () {
@@ -124,11 +99,18 @@ function buildPopup(spot) {
     openForm(spot);
   });
 
-  // Delete: ask first, then remove this spot from the list
-  box.querySelector(".delete-btn").addEventListener("click", function () {
+  // Delete: ask first, then remove it from the database
+  box.querySelector(".delete-btn").addEventListener("click", async function () {
     if (!confirm(`Delete "${spot.name}"?`)) return;
+
+    const { error } = await db.from("spots").delete().eq("id", spot.id);
+    if (error) {
+      console.error(error);
+      alert("Couldn't delete that spot. Try again.");
+      return;
+    }
+
     spots = spots.filter(function (s) { return s.id !== spot.id; });
-    saveSpots();
     map.closePopup();
     renderSpots();
   });
@@ -146,8 +128,6 @@ function renderSpots() {
   });
 }
 
-renderSpots();
-
 
 // ------------------------------------------------------------
 // 4. THE ADD / EDIT FORM
@@ -157,6 +137,7 @@ const panel = document.getElementById("form-panel");
 const spotForm = document.getElementById("spot-form");
 const formTitle = document.getElementById("form-title");
 const formCoords = document.getElementById("form-coords");
+const saveButton = spotForm.querySelector("button[type=submit]");
 const fields = {
   name: document.getElementById("field-name"),
   address: document.getElementById("field-address"),
@@ -176,10 +157,10 @@ function openForm(spot, latlng, address) {
 
   formTitle.textContent = spot ? "Edit spot" : "New spot";
   fields.name.value = spot ? spot.name : "";
-  fields.address.value = spot ? spot.address : (address || "");
-  fields.parking.value = spot ? spot.parking : "";
-  fields.hours.value = spot ? spot.hours : "";
-  fields.notes.value = spot ? spot.notes : "";
+  fields.address.value = spot ? (spot.address || "") : (address || "");
+  fields.parking.value = spot ? (spot.parking || "") : "";
+  fields.hours.value = spot ? (spot.hours || "") : "";
+  fields.notes.value = spot ? (spot.notes || "") : "";
   formCoords.textContent = `Location: ${formLatLng.lat.toFixed(5)}, ${formLatLng.lng.toFixed(5)}`;
 
   panel.hidden = false;
@@ -205,8 +186,8 @@ function removeDraftMarker() {
   }
 }
 
-// Save button
-spotForm.addEventListener("submit", function (event) {
+// Save button: sends the spot to the database
+spotForm.addEventListener("submit", async function (event) {
   event.preventDefault(); // stop the browser from reloading the page
 
   const details = {
@@ -217,22 +198,39 @@ spotForm.addEventListener("submit", function (event) {
     notes: fields.notes.value.trim()
   };
 
+  // Stop double-clicks from saving twice while we wait
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving…";
+
+  let result;
   if (editingId) {
-    // Replace the old details of the spot being edited
-    spots = spots.map(function (s) {
-      return s.id === editingId ? { ...s, ...details } : s;
-    });
+    // Update the existing row, and get the updated row back
+    result = await db.from("spots").update(details).eq("id", editingId).select().single();
   } else {
-    // Add a brand-new spot. Date.now() gives a unique number to use as its id.
-    spots.push({
-      id: Date.now().toString(),
-      lat: formLatLng.lat,
-      lng: formLatLng.lng,
-      ...details
-    });
+    // Insert a new row; the database creates its id and created_at
+    result = await db
+      .from("spots")
+      .insert({ ...details, lat: formLatLng.lat, lng: formLatLng.lng })
+      .select()
+      .single();
   }
 
-  saveSpots();
+  saveButton.disabled = false;
+  saveButton.textContent = "Save";
+
+  if (result.error) {
+    console.error(result.error);
+    alert("Couldn't save that spot. Try again.");
+    return; // keep the form open so nothing you typed is lost
+  }
+
+  const saved = result.data;
+  if (editingId) {
+    spots = spots.map(function (s) { return s.id === saved.id ? saved : s; });
+  } else {
+    spots.push(saved);
+  }
+
   closeForm();
   renderSpots();
 });
@@ -280,6 +278,10 @@ document.getElementById("search-form").addEventListener("submit", async function
     const place = results[0];
     const latlng = L.latLng(Number(place.lat), Number(place.lon));
     map.setView(latlng, 16);
+
+    // Visitors can search to look around, but only you can add a spot
+    if (!currentUser) return;
+
     showDraftMarker(latlng);
     openForm(null, latlng, place.display_name);
   } catch (error) {
@@ -300,6 +302,7 @@ map.on("popupclose", function () {
 });
 
 map.on("click", async function (event) {
+  if (!currentUser) return;     // only signed-in users can add spots
   if (popupJustClosed) return; // that click was just closing a popup
   if (editingId) return;       // don't interrupt an edit in progress
 
@@ -317,3 +320,90 @@ map.on("click", async function (event) {
     fields.address.value = address;
   }
 });
+
+
+// ------------------------------------------------------------
+// 7. SIGN IN AND SIGN OUT
+// ------------------------------------------------------------
+
+const loginBtn = document.getElementById("login-btn");
+const loginPanel = document.getElementById("login-panel");
+const loginForm = document.getElementById("login-form");
+const loginEmail = document.getElementById("login-email");
+const loginPassword = document.getElementById("login-password");
+const loginError = document.getElementById("login-error");
+
+// Runs whenever someone signs in or out, and once when the page loads
+function setUser(user) {
+  currentUser = user;
+  loginBtn.textContent = user ? "Sign out" : "Sign in";
+
+  // Close anything that only makes sense in the other state
+  if (!user) closeForm();
+  map.closePopup(); // popups rebuild next time, with or without Edit/Delete
+}
+
+function openLogin() {
+  closeForm();
+  loginError.hidden = true;
+  loginForm.reset();
+  loginPanel.hidden = false;
+  loginEmail.focus();
+}
+
+function closeLogin() {
+  loginPanel.hidden = true;
+}
+
+// Top-bar button: signs out if you're signed in, otherwise opens the sign-in form
+loginBtn.addEventListener("click", async function () {
+  if (currentUser) {
+    await db.auth.signOut();
+  } else {
+    openLogin();
+  }
+});
+
+// Sign-in form
+loginForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+  loginError.hidden = true;
+
+  const { error } = await db.auth.signInWithPassword({
+    email: loginEmail.value.trim(),
+    password: loginPassword.value
+  });
+
+  if (error) {
+    loginError.textContent = "Wrong email or password.";
+    loginError.hidden = false;
+    return;
+  }
+
+  closeLogin();
+});
+
+document.getElementById("login-cancel").addEventListener("click", closeLogin);
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape" && !loginPanel.hidden) closeLogin();
+});
+
+
+// ------------------------------------------------------------
+// 8. START: check if you're already signed in, then load spots
+// ------------------------------------------------------------
+
+async function start() {
+  // Supabase remembers your sign-in, so you don't have to log in every visit
+  const { data } = await db.auth.getSession();
+  setUser(data.session ? data.session.user : null);
+
+  // Keep the page in sync if you sign in or out later
+  db.auth.onAuthStateChange(function (_event, session) {
+    setUser(session ? session.user : null);
+  });
+
+  loadSpots();
+}
+
+start();
