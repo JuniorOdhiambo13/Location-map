@@ -1,7 +1,8 @@
 // ============================================================
-// Location Map — Phase 4
+// Location Map — Phase 4 + photos
 // Spots are saved in your Supabase database, so every device sees them.
 // Anyone can view the map; only signed-in users can add, edit or delete.
+// Each spot can have one reference photo, stored in Supabase Storage.
 // ============================================================
 
 
@@ -87,6 +88,22 @@ function buildPopup(spot) {
   // ^ Opens Google Maps (the app, if it's installed) with directions
   //   from wherever you are to this spot. target="_blank" = new tab.
 
+  // Show the spot's reference photo under its name, if it has one.
+  // Built with createElement so a strange URL can never be treated as code.
+  if (spot.photo_url) {
+    const img = document.createElement("img");
+    img.className = "spot-photo";
+    img.src = spot.photo_url;
+    img.alt = `Photo of ${spot.name}`;
+    img.loading = "lazy";
+    // Once the photo loads, re-fit the popup so it isn't cut off
+    img.addEventListener("load", function () {
+      const popup = map._popup;
+      if (popup) popup.update();
+    });
+    box.querySelector("h3").after(img);
+  }
+
   // Visitors only see the details. Edit/Delete appear only when you're signed in.
   if (!currentUser) return box;
 
@@ -115,6 +132,8 @@ function buildPopup(spot) {
       return;
     }
 
+    deletePhoto(spot.photo_url); // tidy up its photo file too, if it had one
+
     spots = spots.filter(function (s) { return s.id !== spot.id; });
     map.closePopup();
     renderSpots();
@@ -135,7 +154,76 @@ function renderSpots() {
 
 
 // ------------------------------------------------------------
-// 4. THE ADD / EDIT FORM
+// 4. PHOTOS (Supabase Storage)
+// ------------------------------------------------------------
+
+// The storage "bucket" (like a folder) you created in Supabase
+const PHOTO_BUCKET = "spot-photos";
+
+// Phone photos can be 5+ MB. This shrinks them to at most 1600 pixels wide
+// and saves them as JPEG, usually 200-500 KB, so you stay well inside the
+// free storage limit and popups load fast on mobile data.
+function compressImage(file, maxSize = 1600, quality = 0.8) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = function () {
+      // Work out the new size, keeping the same shape
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      // Draw the photo smaller onto the canvas, then export it as a JPEG
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error("Couldn't process that photo"));
+      }, "image/jpeg", quality);
+    };
+
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("This browser can't read that photo format"));
+    };
+
+    img.src = url;
+  });
+}
+
+// Upload a photo and return its public web address
+async function uploadPhoto(file) {
+  const blob = await compressImage(file);
+
+  // A random file name so two photos never overwrite each other
+  const path = `${crypto.randomUUID()}.jpg`;
+
+  const { error } = await db.storage
+    .from(PHOTO_BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg" });
+  if (error) throw error;
+
+  return db.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+// Delete a photo file from storage. "Best effort": if it fails, the spot
+// still saves fine, and the only cost is a leftover file.
+async function deletePhoto(photoUrl) {
+  if (!photoUrl) return;
+  const marker = `/${PHOTO_BUCKET}/`;
+  const index = photoUrl.indexOf(marker);
+  if (index === -1) return;
+
+  const path = photoUrl.slice(index + marker.length);
+  const { error } = await db.storage.from(PHOTO_BUCKET).remove([path]);
+  if (error) console.warn("Couldn't remove old photo:", error);
+}
+
+
+// ------------------------------------------------------------
+// 5. THE ADD / EDIT FORM
 // ------------------------------------------------------------
 
 const panel = document.getElementById("form-panel");
@@ -148,8 +236,49 @@ const fields = {
   address: document.getElementById("field-address"),
   parking: document.getElementById("field-parking"),
   hours: document.getElementById("field-hours"),
-  notes: document.getElementById("field-notes")
+  notes: document.getElementById("field-notes"),
+  photo: document.getElementById("field-photo")
 };
+
+const photoPreview = document.getElementById("photo-preview");
+const photoPreviewImg = document.getElementById("photo-preview-img");
+
+let currentPhotoUrl = null; // the photo the spot already has (when editing)
+let newPhotoFile = null;    // a photo you just picked, not uploaded yet
+let previewUrl = null;      // temporary address for showing the picked photo
+
+// Show (or hide) the photo preview in the form
+function showPhotoPreview(src) {
+  photoPreview.hidden = !src;
+  photoPreviewImg.src = src || "";
+}
+
+function clearPickedPhoto() {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
+  newPhotoFile = null;
+  fields.photo.value = "";
+}
+
+// When you pick a photo, preview it right away
+fields.photo.addEventListener("change", function () {
+  const file = fields.photo.files[0];
+  clearPickedPhoto();
+  if (!file) {
+    showPhotoPreview(currentPhotoUrl);
+    return;
+  }
+  newPhotoFile = file;
+  previewUrl = URL.createObjectURL(file);
+  showPhotoPreview(previewUrl);
+});
+
+// "Remove photo": drops the picked photo, or marks the saved one for removal
+document.getElementById("photo-remove").addEventListener("click", function () {
+  clearPickedPhoto();
+  currentPhotoUrl = null;
+  showPhotoPreview(null);
+});
 
 let editingId = null;   // id of the spot being edited, or null for a new spot
 let formLatLng = null;  // where the spot is on the map
@@ -166,6 +295,9 @@ function openForm(spot, latlng, address) {
   fields.parking.value = spot ? (spot.parking || "") : "";
   fields.hours.value = spot ? (spot.hours || "") : "";
   fields.notes.value = spot ? (spot.notes || "") : "";
+  clearPickedPhoto();
+  currentPhotoUrl = spot ? (spot.photo_url || null) : null;
+  showPhotoPreview(currentPhotoUrl);
   formCoords.textContent = `Location: ${formLatLng.lat.toFixed(5)}, ${formLatLng.lng.toFixed(5)}`;
 
   panel.hidden = false;
@@ -174,6 +306,7 @@ function openForm(spot, latlng, address) {
 
 function closeForm() {
   panel.hidden = true;
+  clearPickedPhoto();
   editingId = null;
   formLatLng = null;
   removeDraftMarker();
@@ -207,6 +340,27 @@ spotForm.addEventListener("submit", async function (event) {
   saveButton.disabled = true;
   saveButton.textContent = "Saving…";
 
+  // The photo the spot had before this edit (to clean up if it changes)
+  const oldPhotoUrl = editingId
+    ? (spots.find(function (s) { return s.id === editingId; }) || {}).photo_url || null
+    : null;
+
+  // Upload a newly picked photo first, so we can save its address with the spot
+  details.photo_url = currentPhotoUrl;
+  if (newPhotoFile) {
+    saveButton.textContent = "Uploading photo…";
+    try {
+      details.photo_url = await uploadPhoto(newPhotoFile);
+    } catch (error) {
+      console.error(error);
+      saveButton.disabled = false;
+      saveButton.textContent = "Save";
+      alert("Couldn't upload that photo: " + error.message);
+      return; // keep the form open so nothing you typed is lost
+    }
+    saveButton.textContent = "Saving…";
+  }
+
   let result;
   if (editingId) {
     // Update the existing row, and get the updated row back
@@ -225,9 +379,14 @@ spotForm.addEventListener("submit", async function (event) {
 
   if (result.error) {
     console.error(result.error);
+    // The spot didn't save, so don't leave its new photo lying around
+    if (newPhotoFile) deletePhoto(details.photo_url);
     alert("Couldn't save that spot. Try again.");
     return; // keep the form open so nothing you typed is lost
   }
+
+  // Replaced or removed a photo? Delete the old file from storage.
+  if (oldPhotoUrl && oldPhotoUrl !== details.photo_url) deletePhoto(oldPhotoUrl);
 
   const saved = result.data;
   if (editingId) {
@@ -248,7 +407,7 @@ document.addEventListener("keydown", function (event) {
 
 
 // ------------------------------------------------------------
-// 5. ADDRESS LOOKUP WITH NOMINATIM
+// 6. ADDRESS LOOKUP WITH NOMINATIM
 // ------------------------------------------------------------
 
 // Coordinates -> address (used when you click the map)
@@ -296,7 +455,7 @@ document.getElementById("search-form").addEventListener("submit", async function
 
 
 // ------------------------------------------------------------
-// 6. CLICK THE MAP TO ADD A SPOT
+// 7. CLICK THE MAP TO ADD A SPOT
 // ------------------------------------------------------------
 
 // When you click the map to close a popup, don't also start a new spot
@@ -328,7 +487,7 @@ map.on("click", async function (event) {
 
 
 // ------------------------------------------------------------
-// 7. SIGN IN AND SIGN OUT
+// 8. SIGN IN AND SIGN OUT
 // ------------------------------------------------------------
 
 const loginBtn = document.getElementById("login-btn");
@@ -403,7 +562,7 @@ document.addEventListener("keydown", function (event) {
 
 
 // ------------------------------------------------------------
-// 8. START: check if you're already signed in, then load spots
+// 9. START: check if you're already signed in, then load spots
 // ------------------------------------------------------------
 
 async function start() {

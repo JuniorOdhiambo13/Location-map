@@ -46,6 +46,14 @@
       <label>Notes
         <textarea id="field-notes" rows="3" placeholder="Best light, permits, crowds…"></textarea>
       </label>
+      <!-- Reference photo: on a phone this offers the camera or your photo library -->
+      <label>Photo
+        <input id="field-photo" type="file" accept="image/*">
+      </label>
+      <div id="photo-preview" class="photo-preview" hidden>
+        <img id="photo-preview-img" alt="Selected photo">
+        <button type="button" id="photo-remove">Remove photo</button>
+      </div>
       <p id="form-coords" class="coords"></p>
       <div class="form-actions">
         <button type="submit" class="primary">Save</button>
