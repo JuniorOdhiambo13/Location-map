@@ -80,7 +80,12 @@ function buildPopup(spot) {
     <p><span class="label">Parking:</span> ${escapeHtml(spot.parking) || "—"}</p>
     <p><span class="label">Hours:</span> ${escapeHtml(spot.hours) || "—"}</p>
     <p><span class="label">Notes:</span> ${escapeHtml(spot.notes) || "—"}</p>
+    <a class="directions-btn"
+       href="https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lng}"
+       target="_blank" rel="noopener">Get directions</a>
   `;
+  // ^ Opens Google Maps (the app, if it's installed) with directions
+  //   from wherever you are to this spot. target="_blank" = new tab.
 
   // Visitors only see the details. Edit/Delete appear only when you're signed in.
   if (!currentUser) return box;
@@ -335,8 +340,16 @@ const loginError = document.getElementById("login-error");
 
 // Runs whenever someone signs in or out, and once when the page loads
 function setUser(user) {
+  // Supabase also sends background "refresh" events while you stay signed in.
+  // Only react when the person actually changes (signed in <-> signed out),
+  // otherwise popups and forms would close by themselves.
+  const oldId = currentUser ? currentUser.id : null;
+  const newId = user ? user.id : null;
+
   currentUser = user;
   loginBtn.textContent = user ? "Sign out" : "Sign in";
+
+  if (oldId === newId) return;
 
   // Close anything that only makes sense in the other state
   if (!user) closeForm();
